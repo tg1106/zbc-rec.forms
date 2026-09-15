@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ZBC – Round 2 Interview Slot Selection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ece9f1; --card: #fff; --border: #e0e0e0;
+    --text: #202124; --muted: #70757a;
+    --accent: #673ab7; --accent-light: #ede7f6;
+    --good: #1e8e3e; --good-bg: #e6f4ea;
+    --bad: #d93025;  --bad-bg: #fce8e6;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Roboto', 'Google Sans', system-ui, sans-serif;
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 32px 12px 80px; }
+
+  /* Cards */
+  .card {
+    background: var(--card); border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08);
+    margin-bottom: 12px;
+  }
+
+  /* Header card */
+  .header-card .header-bar { height: 10px; background: var(--accent); border-radius: 8px 8px 0 0; }
+  .header-card .header-body { padding: 24px 24px 20px; }
+  .header-card h1 {
+    font-family: 'Google Sans', system-ui, sans-serif;
+    font-size: 28px; font-weight: 400; margin: 0 0 10px; line-height: 1.3;
+  }
+  .header-card .desc { font-size: 13.5px; margin: 0; }
+
+  /* Required note */
+  .req-note { padding: 12px 24px; font-size: 13px; color: var(--bad); }
+
+  /* Question cards */
+  .q-card { padding: 24px; transition: border-left .15s; }
+  .q-card.active { border-left: 6px solid var(--accent); padding-left: 18px; }
+  .q-title {
+    font-size: 15px; font-weight: 400; margin: 0 0 20px;
+    display: flex; align-items: baseline; gap: 3px;
+  }
+  .q-title .star { color: var(--bad); font-size: 13px; }
+
+  /* Underline inputs */
+  .gf-wrap { position: relative; max-width: 380px; }
+  .gf-wrap input {
+    width: 100%; border: none; border-bottom: 1px solid #9e9e9e;
+    background: transparent; color: var(--text); font-size: 14px;
+    font-family: inherit; padding: 6px 0; outline: none;
+    transition: border-bottom-color .15s;
+  }
+  .gf-wrap input::placeholder { color: #bdbdbd; }
+  .gf-wrap input:focus { border-bottom-color: var(--accent); }
+  .gf-wrap input.err { border-bottom-color: var(--bad); }
+  .gf-wrap .bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent); transform: scaleX(0); transform-origin: center;
+    transition: transform .2s; pointer-events: none;
+  }
+  .gf-wrap input:focus ~ .bar { transform: scaleX(1); }
+
+  /* Email row */
+  .email-row { display: flex; align-items: flex-end; max-width: 420px; }
+  .email-row .local { position: relative; flex: 1; }
+  .email-row .local input {
+    width: 100%; border: none; border-bottom: 1px solid #9e9e9e;
+    background: transparent; color: var(--text); font-size: 14px;
+    font-family: inherit; padding: 6px 0; outline: none;
+    transition: border-bottom-color .15s;
+  }
+  .email-row .local input::placeholder { color: #bdbdbd; }
+  .email-row .local input:focus { border-bottom-color: var(--accent); }
+  .email-row .local input.err { border-bottom-color: var(--bad); }
+  .email-row .local .bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent); transform: scaleX(0); transform-origin: center;
+    transition: transform .2s; pointer-events: none;
+  }
+  .email-row .local input:focus ~ .bar { transform: scaleX(1); }
+  .email-row .domain {
+    font-size: 14px; color: var(--muted); padding: 6px 0 6px 2px;
+    border-bottom: 1px solid #9e9e9e; white-space: nowrap; user-select: none;
+  }
+
+  .hint { font-size: 12px; margin-top: 8px; min-height: 16px; color: transparent; }
+  .hint.err  { color: var(--bad); }
+  .hint.ok   { color: var(--good); }
+  .hint.info { color: var(--muted); }
+
+  /* Radio options */
+  .radio-list { display: flex; flex-direction: column; gap: 14px; }
+  .radio-opt {
+    display: flex; align-items: center; gap: 14px; cursor: pointer;
+    font-size: 14px; user-select: none; padding: 2px 0;
+  }
+  .radio-opt .circle {
+    width: 20px; height: 20px; border-radius: 50%; border: 2px solid #757575;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    transition: border-color .15s;
+  }
+  .radio-opt.sel .circle { border-color: var(--accent); }
+  .radio-opt .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent); transform: scale(0); transition: transform .15s;
+  }
+  .radio-opt.sel .dot { transform: scale(1); }
+
+  /* Slot UI */
+  .day-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .day-tab {
+    padding: 7px 16px; border: 1px solid var(--border); border-radius: 20px;
+    background: #fff; cursor: pointer; font-size: 13px; font-weight: 500;
+    color: var(--muted); font-family: inherit; transition: all .15s;
+  }
+  .day-tab.active { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+  .slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  @media (max-width: 420px) { .slot-grid { grid-template-columns: repeat(2, 1fr); } }
+  .slot {
+    border: 1px solid var(--border); background: #fff; border-radius: 4px;
+    padding: 10px 6px; text-align: center; font-size: 12.5px;
+    cursor: pointer; font-family: inherit;
+    transition: border-color .15s, background .15s;
+  }
+  .slot:hover:not(.taken):not(.sel) { border-color: var(--accent); background: var(--accent-light); }
+  .slot.sel   { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 500; }
+  .slot.taken { color: #bdbdbd; opacity: .55; cursor: not-allowed; text-decoration: line-through; }
+
+  .slot-loading { padding: 18px 0; color: var(--muted); font-size: 13px; }
+  .slot-note { font-size: 12px; color: var(--muted); margin-top: 12px; }
+  .slot-note button {
+    background: none; border: none; color: var(--accent); cursor: pointer;
+    font-size: 12px; font-family: inherit; font-weight: 500; padding: 0;
+  }
+  .slot-note button:hover { text-decoration: underline; }
+
+  /* Submit */
+  .submit-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 4px 0; }
+  .submit-btn {
+    padding: 10px 24px; background: var(--accent); color: #fff;
+    border: none; border-radius: 4px; font-size: 14px; font-weight: 500;
+    font-family: inherit; cursor: pointer; transition: background .15s;
+  }
+  .submit-btn:hover:not(:disabled) { background: #5e35b1; }
+  .submit-btn:disabled { background: #e0e0e0; color: #9e9e9e; cursor: not-allowed; }
+
+  .banner {
+    display: none; border-radius: 4px; padding: 12px 16px;
+    font-size: 13.5px; margin-top: 10px; border: 1px solid transparent;
+  }
+  .banner.show { display: block; }
+  .banner.bad  { background: var(--bad-bg);  border-color: #f5c6c3; color: var(--bad); }
+  .banner.good { background: var(--good-bg); border-color: #a8d5b5; color: var(--good); }
+
+  /* Success */
+  .success-screen { display: none; }
+  .success-screen.show { display: block; }
+  .success-card { text-align: center; padding: 40px 24px 32px; }
+  .check-circle {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--good-bg); border: 2px solid var(--good);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 18px; color: var(--good); font-size: 26px;
+  }
+  .success-card h2 { font-size: 22px; font-weight: 400; margin: 0 0 8px; }
+  .success-card p  { color: var(--muted); font-size: 14px; margin: 0; }
+  .success-detail  { margin-top: 20px; text-align: left; border-top: 1px solid var(--border); padding-top: 16px; }
+  .det-row {
+    display: flex; justify-content: space-between;
+    padding: 6px 0; border-bottom: 1px solid #f1f3f4; font-size: 13.5px;
+  }
+  .det-row:last-child { border-bottom: none; }
+  .det-row .lbl { color: var(--muted); }
+
+  /* Spinner */
+  .spin {
+    display: inline-block; width: 13px; height: 13px;
+    border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+    border-radius: 50%; animation: spin .6s linear infinite;
+    vertical-align: -2px; margin-right: 6px;
+  }
+  .spin.dark { border-color: rgba(0,0,0,.12); border-top-color: var(--muted); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .form-body.hide { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="card header-card">
+    <div class="header-bar"></div>
+    <div class="header-body">
+      <h1>Zero Bugs Club &ndash; Round 2 Interview Slot Selection</h1>
+      <p class="desc">Please select your interview slot for Round 2. Each slot is strictly 10 minutes and first-come, first-served. All fields are compulsory.</p>
+    </div>
+  </div>
+
+  <div class="card req-note">* Indicates required question</div>
+
+  <!-- Form -->
+  <div id="formBody" class="form-body">
+
+    <div class="card q-card" id="qName">
+      <div class="q-title">Full Name <span class="star">*</span></div>
+      <div class="gf-wrap">
+        <input type="text" id="fullName" placeholder="Your answer" autocomplete="name" spellcheck="false">
+        <span class="bar"></span>
+      </div>
+    </div>
+
+    <div class="card q-card" id="qReg">
+      <div class="q-title">Registration Number <span class="star">*</span></div>
+      <div class="gf-wrap">
+        <input type="text" id="regNo" placeholder="e.g. 23BCE1234" autocomplete="off" spellcheck="false">
+        <span class="bar"></span>
+      </div>
+    </div>
+
+    <div class="card q-card" id="qEmail">
+      <div class="q-title">VIT Student Email <span class="star">*</span></div>
+      <div class="email-row">
+        <div class="local">
+          <input type="text" id="emailLocal" placeholder="your.name2024" autocomplete="off" spellcheck="false">
+          <span class="bar"></span>
+        </div>
+        <span class="domain">@vitstudent.ac.in</span>
+      </div>
+      <div class="hint" id="emailHint"></div>
+    </div>
+
+    <div class="card q-card" id="qDept">
+      <div class="q-title">Secondary Department Preference <span class="star">*</span></div>
+      <div class="radio-list" id="deptList">
+        <label class="radio-opt" data-dept="HR">
+          <span class="circle"><span class="dot"></span></span><span>HR</span>
+        </label>
+        <label class="radio-opt" data-dept="Design">
+          <span class="circle"><span class="dot"></span></span><span>Design</span>
+        </label>
+        <label class="radio-opt" data-dept="Events">
+          <span class="circle"><span class="dot"></span></span><span>Events</span>
+        </label>
+        <label class="radio-opt" data-dept="Outreach">
+          <span class="circle"><span class="dot"></span></span><span>Outreach</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card q-card" id="qSlot">
+      <div class="q-title">
+        Select Your Interview Slot <span class="star">*</span>
+        <span style="font-size:12px;color:var(--muted);font-weight:400;">&mdash; 10 min each, 8:00&ndash;10:00 PM</span>
+      </div>
+      <div class="day-tabs" id="dayTabs"></div>
+      <div class="slot-loading" id="slotLoading"><span class="spin dark" style="width:11px;height:11px;border-width:1.5px;"></span> Loading slots&hellip;</div>
+      <div class="slot-grid"    id="slotGrid" style="display:none;"></div>
+      <div class="slot-note">Slots update live. <button id="refreshBtn" type="button">Refresh</button></div>
+    </div>
+
+    <div class="card" style="padding:20px 24px;">
+      <div class="submit-row">
+        <button class="submit-btn" id="submitBtn" disabled>Submit</button>
+        <span style="font-size:12.5px;color:var(--muted);">Never submit passwords through this form.</span>
+      </div>
+      <div class="banner" id="banner"></div>
+    </div>
+
+  </div><!-- /formBody -->
+
+  <!-- Success -->
+  <div class="success-screen" id="successScreen">
+    <div class="card success-card">
+      <div class="check-circle">&#10003;</div>
+      <h2>Your response has been recorded.</h2>
+      <p>Your slot is confirmed. See you at the interview.</p>
+      <div class="success-detail" id="successDetail"></div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Slot generation (client-side, for rendering only) ── */
+  var EMAIL_DOMAIN = '@vitstudent.ac.in';
+  var DAYS = [
+    { date: '2026-09-17', label: 'Thu, 17 Sept' },
+    { date: '2026-09-18', label: 'Fri, 18 Sept' },
+  ];
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function buildSlots(date) {
+    var slots = [];
+    for (var t = 20 * 60; t < 22 * 60; t += 10) {
+      var h = Math.floor(t / 60), m = t % 60;
+      var h2 = Math.floor((t + 10) / 60), m2 = (t + 10) % 60;
+      function fmt(hh, mm) { return (hh % 12 || 12) + ':' + pad(mm) + '\u202f' + (hh < 12 ? 'AM' : 'PM'); }
+      slots.push({ id: date + '_' + pad(h) + pad(m), label: fmt(h, m) + ' \u2013 ' + fmt(h2, m2) });
+    }
+    return slots;
+  }
+  var ALL_SLOTS = {};
+  DAYS.forEach(function (d) { ALL_SLOTS[d.date] = buildSlots(d.date); });
+
+  /* ── State ── */
+  var state = { dept: null, slotId: null, activeDay: DAYS[0].date, slotMap: {}, emailTaken: false };
+
+  /* ── DOM ── */
+  function $(id) { return document.getElementById(id); }
+  var fullNameEl   = $('fullName');
+  var regNoEl      = $('regNo');
+  var emailLocalEl = $('emailLocal');
+  var emailHint    = $('emailHint');
+  var deptList     = $('deptList');
+  var dayTabs      = $('dayTabs');
+  var slotLoading  = $('slotLoading');
+  var slotGrid     = $('slotGrid');
+  var submitBtn    = $('submitBtn');
+  var banner       = $('banner');
+  var formBody     = $('formBody');
+  var successScreen= $('successScreen');
+  var successDetail= $('successDetail');
+
+  function fullEmail() { return emailLocalEl.value.trim().toLowerCase() + EMAIL_DOMAIN; }
+  function showBanner(msg, kind) { banner.textContent = msg; banner.className = 'banner show ' + kind; }
+  function hideBanner() { banner.className = 'banner'; }
+
+  /* ── Active card highlight ── */
+  document.querySelectorAll('.q-card').forEach(function (c) {
+    c.addEventListener('focusin',  function () { c.classList.add('active'); });
+    c.addEventListener('focusout', function () { c.classList.remove('active'); });
+  });
+
+  /* ── Day tabs ── */
+  DAYS.forEach(function (d, i) {
+    var tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'day-tab' + (i === 0 ? ' active' : '');
+    tab.textContent = d.label;
+    tab.addEventListener('click', function () {
+      state.activeDay = d.date;
+      Array.from(dayTabs.children).forEach(function (c) { c.classList.remove('active'); });
+      tab.classList.add('active');
+      renderSlots();
+    });
+    dayTabs.appendChild(tab);
+  });
+
+  /* ── Render slots ── */
+  function renderSlots() {
+    slotGrid.innerHTML = '';
+    ALL_SLOTS[state.activeDay].forEach(function (s) {
+      var taken = !!state.slotMap[s.id];
+      var el = document.createElement('div');
+      el.className = 'slot' + (taken ? ' taken' : '') + (state.slotId === s.id ? ' sel' : '');
+      el.textContent = s.label;
+      if (!taken) {
+        el.addEventListener('click', function () {
+          state.slotId = s.id; renderSlots(); updateSubmit();
+        });
+      }
+      slotGrid.appendChild(el);
+    });
+  }
+
+  /* ── Load slots from server ── */
+  function loadSlots() {
+    slotLoading.style.display = 'block';
+    slotGrid.style.display    = 'none';
+    return fetch('/api/slots')
+      .then(function (r) { return r.json(); })
+      .then(function (res) { state.slotMap = (res.ok && res.slots) ? res.slots : {}; })
+      .catch(function ()  { state.slotMap = {}; })
+      .finally(function () {
+        slotLoading.style.display = 'none';
+        slotGrid.style.display    = 'grid';
+        renderSlots();
+      });
+  }
+
+  $('refreshBtn').addEventListener('click', loadSlots);
+  setInterval(loadSlots, 8000);
+
+  /* ── Dept selection ── */
+  deptList.addEventListener('click', function (e) {
+    var opt = e.target.closest('.radio-opt');
+    if (!opt) return;
+    state.dept = opt.getAttribute('data-dept');
+    Array.from(deptList.children).forEach(function (c) { c.classList.remove('sel'); });
+    opt.classList.add('sel');
+    updateSubmit();
+  });
+
+  /* ── Email check (debounced 300 ms → /api/check-email) ── */
+  var emailTimer;
+  emailLocalEl.addEventListener('input', function () {
+    emailLocalEl.classList.remove('err');
+    clearTimeout(emailTimer);
+    var val = emailLocalEl.value.trim();
+    if (!val) {
+      emailHint.textContent = ''; emailHint.className = 'hint';
+      state.emailTaken = false; updateSubmit(); return;
+    }
+    emailHint.innerHTML = '<span class="spin dark" style="width:10px;height:10px;border-width:1.5px;"></span> Checking\u2026';
+    emailHint.className = 'hint info';
+    emailTimer = setTimeout(checkEmail, 300);
+  });
+
+  function checkEmail() {
+    var local = emailLocalEl.value.trim();
+    if (!local) return;
+    fetch('/api/check-email?email=' + encodeURIComponent(fullEmail()))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok && res.taken) {
+          state.emailTaken = true;
+          emailHint.textContent = 'This email has already submitted a response.';
+          emailHint.className = 'hint err';
+          emailLocalEl.classList.add('err');
+        } else {
+          state.emailTaken = false;
+          emailHint.textContent = '\u2713 Available';
+          emailHint.className = 'hint ok';
+          emailLocalEl.classList.remove('err');
+        }
+      })
+      .catch(function () {
+        state.emailTaken = false;
+        emailHint.textContent = 'Could not verify \u2014 will check on submit.';
+        emailHint.className = 'hint info';
+      })
+      .finally(updateSubmit);
+  }
+
+  /* ── Validation ── */
+  function formValid() {
+    return fullNameEl.value.trim().length > 0 &&
+           regNoEl.value.trim().length    > 0 &&
+           emailLocalEl.value.trim().length > 0 &&
+           !state.emailTaken && !!state.dept && !!state.slotId;
+  }
+  function updateSubmit() { submitBtn.disabled = !formValid(); }
+  [fullNameEl, regNoEl].forEach(function (el) { el.addEventListener('input', updateSubmit); });
+
+  /* ── Submit → POST /api/submit ── */
+  submitBtn.addEventListener('click', function () {
+    hideBanner();
+    if (!formValid()) return;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spin"></span>Submitting\u2026';
+
+    var slotLabel = slotLabelFor(state.slotId);
+
+    fetch('/api/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fullName : fullNameEl.value.trim(),
+        regNo    : regNoEl.value.trim(),
+        email    : fullEmail(),
+        dept     : state.dept,
+        slotId   : state.slotId,
+        slotLabel: slotLabel,
+      }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      if (res.ok) {
+        showSuccess({ fullName: fullNameEl.value.trim(), regNo: regNoEl.value.trim(),
+                      email: fullEmail(), dept: state.dept, slotLabel: slotLabel });
+      } else if (res.error === 'duplicate_email') {
+        state.emailTaken = true;
+        emailHint.textContent = 'This email has already submitted a response.';
+        emailHint.className = 'hint err';
+        emailLocalEl.classList.add('err');
+        showBanner('This email has already submitted. Only one response per email is allowed.', 'bad');
+        resetBtn();
+      } else if (res.error === 'slot_taken') {
+        showBanner('That slot was just taken. Please pick another.', 'bad');
+        state.slotId = null;
+        loadSlots().then(resetBtn);
+      } else {
+        showBanner((res.error || 'Submission failed.') + ' Please try again.', 'bad');
+        resetBtn();
+      }
+    })
+    .catch(function () {
+      showBanner('Network error. Check your connection and try again.', 'bad');
+      resetBtn();
+    });
+  });
+
+  /* ── Helpers ── */
+  function slotLabelFor(slotId) {
+    for (var d in ALL_SLOTS) {
+      for (var i = 0; i < ALL_SLOTS[d].length; i++) {
+        if (ALL_SLOTS[d][i].id === slotId) {
+          var dl = DAYS.find(function (x) { return x.date === d; }).label;
+          return ALL_SLOTS[d][i].label + ' (' + dl + ')';
+        }
+      }
+    }
+    return slotId;
+  }
+  function resetBtn() {
+    submitBtn.innerHTML = 'Submit'; updateSubmit();
+  }
+  function esc(s) {
+    var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML;
+  }
+  function showSuccess(p) {
+    formBody.classList.add('hide');
+    successScreen.classList.add('show');
+    successDetail.innerHTML =
+      row('Name', p.fullName) + row('Reg. No.', p.regNo) +
+      row('Email', p.email)   + row('Department', p.dept) +
+      row('Slot', p.slotLabel);
+  }
+  function row(l, v) {
+    return '<div class="det-row"><span class="lbl">' + esc(l) + '</span><span>' + esc(v) + '</span></div>';
+  }
+
+  /* ── Init ── */
+  loadSlots();
+  updateSubmit();
+})();
+</script>
+</body>
+</html>

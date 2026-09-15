@@ -1,43 +1,53 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════╗
  * ║  ZBC Round 2 — Google Apps Script Backend                       ║
- * ║  Handles: submit, email-check, slot-map, admin read             ║
+ * ║                                                                  ║
+ * ║  This script is called ONLY by the Node.js server (server.js).  ║
+ * ║  Tokens are injected by the server from .env — they are never   ║
+ * ║  visible in the browser or in the HTML files.                   ║
  * ╚══════════════════════════════════════════════════════════════════╝
  *
- * SETUP (do this once):
- * ─────────────────────
- * 1. Create a new Google Sheet with these exact column headers in Row 1:
- *      Timestamp | Full Name | Registration Number | Email | Department | Slot ID | Slot Label
+ * ── SETUP ──────────────────────────────────────────────────────────
+ * 1. Create a new Google Sheet (any name you like).
+ *    The script will auto-create a "Responses" tab with headers
+ *    on the very first form submission — no manual setup needed.
  *
- * 2. Open Extensions > Apps Script, paste this whole file, save.
+ * 2. In the sheet: Extensions → Apps Script
+ *    Delete any starter code and paste this whole file. Save (Ctrl+S).
  *
- * 3. Change the two secrets below:
- *      SUBMIT_TOKEN  — a long random string, paste the same into index.html
- *      ADMIN_TOKEN   — a different long random string, paste into admin.html
- *    Generate them at: https://randomkeygen.com  (use "Fort Knox Passwords")
+ * 3. Set your tokens below.
+ *    Copy the same values into your .env file:
+ *      GAS_SUBMIT_TOKEN=...
+ *      GAS_ADMIN_TOKEN=...
+ *    Generate strong tokens at: https://randomkeygen.com
+ *    (use the "Fort Knox Passwords" section — aim for 40+ chars)
  *
- * 4. Deploy > New deployment
- *      Type:         Web app
- *      Execute as:   Me
+ * 4. Deploy → New deployment
+ *      Type          : Web app
+ *      Execute as    : Me
  *      Who can access: Anyone
- *    Click Deploy → copy the Web App URL.
- *    Paste that URL into SCRIPT_URL in both index.html and admin.html.
+ *    Click Deploy → Authorize → copy the Web App URL.
+ *    Paste it into your .env file:  GAS_URL=https://script.google.com/...
  *
- * 5. Every time you edit this file, do Deploy > Manage deployments >
- *    click the pencil on your deployment > Version: New version > Deploy.
- *    (The URL stays the same.)
+ * 5. Every time you edit this file you must re-deploy:
+ *    Deploy → Manage deployments → pencil icon → Version: New version → Deploy.
+ *    The URL does NOT change between versions.
+ *
+ * ── TOKEN SECURITY MODEL ───────────────────────────────────────────
+ * • SUBMIT_TOKEN  — used by the Node server for /api/slots,
+ *                   /api/check-email, and /api/submit
+ * • ADMIN_TOKEN   — used only for /api/admin/responses
+ * Both tokens travel only between your Node server and Google's
+ * servers (HTTPS). They are never sent to or stored in any browser.
  */
 
-// ── Secrets ────────────────────────────────────────────────────────────────
-// These act as API keys. Anyone with the URL but without the right token
-// gets a 403 back. Change both before deploying.
+// ── Change both tokens before deploying ────────────────────────────
 var SUBMIT_TOKEN = 'CHANGE_ME_SUBMIT_TOKEN_MIN_32_CHARS';
 var ADMIN_TOKEN  = 'CHANGE_ME_ADMIN_TOKEN_MIN_32_CHARS';
 
-// ── Sheet config ────────────────────────────────────────────────────────────
-var SHEET_NAME = 'Responses'; // name of the tab inside your spreadsheet
+// ── Sheet config ────────────────────────────────────────────────────
+var SHEET_NAME = 'Responses';
 
-// Column positions (1-indexed) — must match the headers you created
 var COL = {
   TIMESTAMP : 1,
   FULL_NAME : 2,
@@ -48,41 +58,41 @@ var COL = {
   SLOT_LABEL: 7
 };
 
-// ── CORS helper ─────────────────────────────────────────────────────────────
-function jsonResponse(obj, code) {
-  var out = ContentService
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function jsonOut(obj) {
+  return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
-  return out;
 }
 
-function err(msg, code) {
-  return jsonResponse({ ok: false, error: msg });
+function errOut(msg) {
+  return jsonOut({ ok: false, error: msg });
 }
 
-// ── Sheet accessor ──────────────────────────────────────────────────────────
 function getSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET_NAME);
   if (!sh) {
-    // Auto-create the sheet with headers if it doesn't exist
     sh = ss.insertSheet(SHEET_NAME);
     sh.getRange(1, 1, 1, 7).setValues([[
       'Timestamp', 'Full Name', 'Registration Number',
       'Email', 'Department', 'Slot ID', 'Slot Label'
     ]]);
     sh.setFrozenRows(1);
-    sh.getRange(1, 1, 1, 7).setFontWeight('bold');
+    sh.getRange(1, 1, 1, 7)
+      .setFontWeight('bold')
+      .setBackground('#673ab7')
+      .setFontColor('#ffffff');
   }
   return sh;
 }
 
-// ── Sanitise email to a consistent key ─────────────────────────────────────
 function sanitizeEmail(email) {
-  return email.toLowerCase().trim();
+  return String(email).toLowerCase().trim();
 }
 
-// ── Constant-time string comparison (avoids timing attacks) ────────────────
+/** Constant-time string comparison — prevents timing-based token guessing */
 function safeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
   if (a.length !== b.length) return false;
@@ -93,133 +103,113 @@ function safeEqual(a, b) {
   return result === 0;
 }
 
-// ── Input validation helpers ────────────────────────────────────────────────
 function isValidEmail(email) {
-  return typeof email === 'string' &&
-         email.length < 200 &&
-         /^[a-z0-9._%+\-]+@vitstudent\.ac\.in$/.test(email.toLowerCase().trim());
+  return /^[a-z0-9._%+\-]+@vitstudent\.ac\.in$/.test(email);
 }
 
-function isValidSlotId(slotId) {
-  // Format: YYYY-MM-DD_HHMM  e.g. 2026-09-17_2000
-  return typeof slotId === 'string' && /^\d{4}-\d{2}-\d{2}_\d{4}$/.test(slotId);
+function isValidSlotId(id) {
+  return /^\d{4}-\d{2}-\d{2}_\d{4}$/.test(id);
 }
 
-function isNonEmptyString(val, maxLen) {
-  return typeof val === 'string' && val.trim().length > 0 && val.length <= (maxLen || 500);
+function isStr(val, min, max) {
+  return typeof val === 'string' && val.trim().length >= (min||1) && val.length <= (max||500);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  doGet — handles read-only queries
-//  ?action=checkEmail&email=x@vitstudent.ac.in&token=SUBMIT_TOKEN
-//  ?action=getSlots&token=SUBMIT_TOKEN
+// ═══════════════════════════════════════════════════════════════════
+//  doGet
+//  ?action=checkEmail  &token=SUBMIT_TOKEN  &email=x@vitstudent.ac.in
+//  ?action=getSlots    &token=SUBMIT_TOKEN
 //  ?action=getResponses&token=ADMIN_TOKEN
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 function doGet(e) {
-  var params = e.parameter;
-  var action = params.action || '';
-  var token  = params.token  || '';
+  var p      = e.parameter;
+  var action = p.action || '';
+  var token  = p.token  || '';
 
-  // ── checkEmail ───────────────────────────────────────────────────────────
   if (action === 'checkEmail') {
-    if (!safeEqual(token, SUBMIT_TOKEN)) return err('Unauthorized');
-    var email = sanitizeEmail(params.email || '');
-    if (!isValidEmail(email)) return err('Invalid email');
+    if (!safeEqual(token, SUBMIT_TOKEN)) return errOut('Unauthorized');
+    var email = sanitizeEmail(p.email || '');
+    if (!isValidEmail(email)) return errOut('Invalid email');
 
-    var sheet = getSheet();
-    var data  = sheet.getDataRange().getValues();
+    var data = getSheet().getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
-      if (sanitizeEmail(String(data[i][COL.EMAIL - 1])) === email) {
-        return jsonResponse({ ok: true, taken: true });
+      if (sanitizeEmail(data[i][COL.EMAIL - 1]) === email) {
+        return jsonOut({ ok: true, taken: true });
       }
     }
-    return jsonResponse({ ok: true, taken: false });
+    return jsonOut({ ok: true, taken: false });
   }
 
-  // ── getSlots ─────────────────────────────────────────────────────────────
-  // Returns a map of { slotId: email } for taken slots
   if (action === 'getSlots') {
-    if (!safeEqual(token, SUBMIT_TOKEN)) return err('Unauthorized');
-
-    var sheet = getSheet();
-    var data  = sheet.getDataRange().getValues();
+    if (!safeEqual(token, SUBMIT_TOKEN)) return errOut('Unauthorized');
+    var data    = getSheet().getDataRange().getValues();
     var slotMap = {};
     for (var i = 1; i < data.length; i++) {
-      var slotId = String(data[i][COL.SLOT_ID - 1]).trim();
-      var email  = String(data[i][COL.EMAIL  - 1]).trim();
-      if (slotId) slotMap[slotId] = email;
+      var sid = String(data[i][COL.SLOT_ID - 1]).trim();
+      if (sid) slotMap[sid] = String(data[i][COL.EMAIL - 1]).trim();
     }
-    return jsonResponse({ ok: true, slots: slotMap });
+    return jsonOut({ ok: true, slots: slotMap });
   }
 
-  // ── getResponses (admin only) ─────────────────────────────────────────────
   if (action === 'getResponses') {
-    if (!safeEqual(token, ADMIN_TOKEN)) return err('Unauthorized');
-
-    var sheet = getSheet();
-    var data  = sheet.getDataRange().getValues();
-    var rows  = [];
+    if (!safeEqual(token, ADMIN_TOKEN)) return errOut('Unauthorized');
+    var data = getSheet().getDataRange().getValues();
+    var rows = [];
     for (var i = 1; i < data.length; i++) {
-      var row = data[i];
-      if (!row[COL.EMAIL - 1]) continue; // skip blank rows
+      if (!data[i][COL.EMAIL - 1]) continue;
       rows.push({
-        timestamp : String(row[COL.TIMESTAMP  - 1]),
-        fullName  : String(row[COL.FULL_NAME  - 1]),
-        regNo     : String(row[COL.REG_NO     - 1]),
-        email     : String(row[COL.EMAIL      - 1]),
-        dept      : String(row[COL.DEPT       - 1]),
-        slotId    : String(row[COL.SLOT_ID    - 1]),
-        slotLabel : String(row[COL.SLOT_LABEL - 1])
+        timestamp : String(data[i][COL.TIMESTAMP  - 1]),
+        fullName  : String(data[i][COL.FULL_NAME  - 1]),
+        regNo     : String(data[i][COL.REG_NO     - 1]),
+        email     : String(data[i][COL.EMAIL      - 1]),
+        dept      : String(data[i][COL.DEPT       - 1]),
+        slotId    : String(data[i][COL.SLOT_ID    - 1]),
+        slotLabel : String(data[i][COL.SLOT_LABEL - 1])
       });
     }
-    return jsonResponse({ ok: true, responses: rows });
+    return jsonOut({ ok: true, responses: rows });
   }
 
-  return err('Unknown action');
+  return errOut('Unknown action');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  doPost — handles form submission
-//  Body (JSON): { token, fullName, regNo, email, dept, slotId, slotLabel }
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//  doPost — form submission
+//  Body JSON: { token, fullName, regNo, email, dept, slotId, slotLabel }
+// ═══════════════════════════════════════════════════════════════════
 function doPost(e) {
   var data;
-  try {
-    data = JSON.parse(e.postData.contents);
-  } catch (ex) {
-    return err('Invalid JSON');
-  }
+  try { data = JSON.parse(e.postData.contents); }
+  catch (ex) { return errOut('Invalid JSON'); }
 
-  // ── Auth ─────────────────────────────────────────────────────────────────
-  if (!safeEqual(data.token || '', SUBMIT_TOKEN)) return err('Unauthorized');
+  if (!safeEqual(data.token || '', SUBMIT_TOKEN)) return errOut('Unauthorized');
 
-  // ── Validate every field ─────────────────────────────────────────────────
   var email = sanitizeEmail(data.email || '');
-  if (!isNonEmptyString(data.fullName, 200))  return err('Invalid fullName');
-  if (!isNonEmptyString(data.regNo,    50))   return err('Invalid regNo');
-  if (!isValidEmail(email))                   return err('Invalid email');
-  if (!isNonEmptyString(data.dept, 50))       return err('Invalid dept');
-  if (!isValidSlotId(data.slotId))            return err('Invalid slotId');
-  if (!isNonEmptyString(data.slotLabel, 200)) return err('Invalid slotLabel');
+  if (!isStr(data.fullName, 2, 200))  return errOut('Invalid fullName');
+  if (!isStr(data.regNo,    2, 50))   return errOut('Invalid regNo');
+  if (!isValidEmail(email))           return errOut('Invalid email');
+  if (!isStr(data.dept,     1, 50))   return errOut('Invalid dept');
+  if (!isValidSlotId(data.slotId))    return errOut('Invalid slotId');
+  if (!isStr(data.slotLabel, 2, 200)) return errOut('Invalid slotLabel');
 
-  var sheet = getSheet();
+  var sheet    = getSheet();
   var existing = sheet.getDataRange().getValues();
 
-  // ── Duplicate email check ─────────────────────────────────────────────────
+  // Duplicate email check
   for (var i = 1; i < existing.length; i++) {
-    if (sanitizeEmail(String(existing[i][COL.EMAIL - 1])) === email) {
-      return jsonResponse({ ok: false, error: 'duplicate_email' });
+    if (sanitizeEmail(existing[i][COL.EMAIL - 1]) === email) {
+      return jsonOut({ ok: false, error: 'duplicate_email' });
     }
   }
 
-  // ── Slot already taken check ──────────────────────────────────────────────
+  // Slot already taken check
   for (var i = 1; i < existing.length; i++) {
     if (String(existing[i][COL.SLOT_ID - 1]).trim() === data.slotId) {
-      return jsonResponse({ ok: false, error: 'slot_taken' });
+      return jsonOut({ ok: false, error: 'slot_taken' });
     }
   }
 
-  // ── Write the row ─────────────────────────────────────────────────────────
+  // Write row
   sheet.appendRow([
     new Date().toISOString(),
     data.fullName.trim(),
@@ -230,11 +220,11 @@ function doPost(e) {
     data.slotLabel.trim()
   ]);
 
-  // ── Auto-format: freeze header, colour new row alternately ───────────────
+  // Alternate row shading for readability
   var lastRow = sheet.getLastRow();
   if (lastRow % 2 === 0) {
     sheet.getRange(lastRow, 1, 1, 7).setBackground('#f8f9fa');
   }
 
-  return jsonResponse({ ok: true });
+  return jsonOut({ ok: true });
 }
