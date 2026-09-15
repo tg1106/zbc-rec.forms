@@ -48,6 +48,11 @@ const ADMIN_HASH = crypto
 ═══════════════════════════════════════════════════════════════ */
 const app = express();
 
+/* ── Trust proxy — required on Railway/Render/Heroku (sit behind nginx)
+   Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+   and sessions don't get secure cookies correctly.                        ── */
+app.set('trust proxy', 1);
+
 /* ── Security headers (helmet) ── */
 app.use(
   helmet({
@@ -151,30 +156,34 @@ function requireAuth(req, res, next) {
 }
 
 /* ── Native HTTP/HTTPS request helper ──
-   Replaces node-fetch which hangs following GAS cross-domain redirects.
-   Manually follows up to 5 redirects using Node's built-in https module. */
-function httpsGet(urlStr, options = {}) {
+   GAS returns a 302 to script.googleusercontent.com.
+   On Railway the first hop can take 3-5s, so timeout is 30s.
+   If the redirect target returns 404 (stale user_content_key after
+   a re-deploy), we retry the original GAS URL once.              ── */
+function httpsRequest(urlStr, options, _retries) {
+  options  = options  || {};
+  _retries = _retries === undefined ? 1 : _retries; // allow 1 retry on stale redirect
+
   return new Promise((resolve, reject) => {
     let redirects = 0;
 
-    function doRequest(currentUrl, currentOptions) {
-      const parsed   = new URL(currentUrl);
-      const lib      = parsed.protocol === 'https:' ? https : http;
-      const reqOpts  = {
+    function doRequest(currentUrl, currentOpts) {
+      const parsed  = new URL(currentUrl);
+      const lib     = parsed.protocol === 'https:' ? https : http;
+      const reqOpts = {
         hostname: parsed.hostname,
         port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
         path:     parsed.pathname + parsed.search,
-        method:   currentOptions.method || 'GET',
-        headers:  Object.assign({ 'User-Agent': 'ZBC-Form-Server/1.0' }, currentOptions.headers || {}),
+        method:   currentOpts.method || 'GET',
+        headers:  Object.assign({ 'User-Agent': 'ZBC-Form-Server/1.0' }, currentOpts.headers || {}),
       };
 
       const req = lib.request(reqOpts, (res) => {
-        // Follow redirects — always switch to GET after first redirect (standard 302 behaviour)
+        // Follow redirects, switching to GET after the first hop
         if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
           if (++redirects > 5) return reject(new Error('Too many redirects'));
-          res.resume(); // discard body
+          res.resume();
           const next = new URL(res.headers.location, currentUrl).toString();
-          // Use GET for the follow-up (browsers and curl do this for 302/303)
           return doRequest(next, { headers: { 'User-Agent': 'ZBC-Form-Server/1.0' } });
         }
 
@@ -182,6 +191,11 @@ function httpsGet(urlStr, options = {}) {
         res.setEncoding('utf8');
         res.on('data', (chunk) => { body += chunk; });
         res.on('end', () => {
+          // 404 on the redirect target = stale user_content_key — retry original URL
+          if (res.statusCode === 404 && _retries > 0) {
+            console.warn('[GAS] Stale redirect (404), retrying original URL...');
+            return httpsRequest(urlStr, options, _retries - 1).then(resolve, reject);
+          }
           if (res.statusCode < 200 || res.statusCode >= 300) {
             return reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 200)}`));
           }
@@ -191,9 +205,10 @@ function httpsGet(urlStr, options = {}) {
       });
 
       req.on('error', reject);
-      req.setTimeout(15000, () => { req.destroy(new Error('GAS request timed out')); });
+      // 30 s — accounts for Railway cold-start + GAS execution time
+      req.setTimeout(30000, () => { req.destroy(new Error('GAS request timed out')); });
 
-      if (currentOptions.body) req.write(currentOptions.body);
+      if (currentOpts.body) req.write(currentOpts.body);
       req.end();
     }
 
@@ -204,13 +219,13 @@ function httpsGet(urlStr, options = {}) {
 /* GAS GET proxy */
 function gasGet(params) {
   const qs = new URLSearchParams(params).toString();
-  return httpsGet(`${GAS_URL}?${qs}`);
+  return httpsRequest(`${GAS_URL}?${qs}`);
 }
 
 /* GAS POST proxy */
 function gasPost(body) {
   const payload = JSON.stringify(body);
-  return httpsGet(GAS_URL, {
+  return httpsRequest(GAS_URL, {
     method:  'POST',
     headers: {
       'Content-Type':   'text/plain;charset=utf-8',
