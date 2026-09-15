@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ZBC Admin – Response Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f0ebf8;
+    --card: #ffffff;
+    --border: #e0e0e0;
+    --text: #202124;
+    --muted: #70757a;
+    --accent: #673ab7;
+    --accent-light: #ede7f6;
+    --bad: #d93025;
+    --bad-bg: #fce8e6;
+    --good: #1e8e3e;
+    --good-bg: #e6f4ea;
+    --header-bar: #673ab7;
+    --chip-bg: #f1f3f4;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Roboto', 'Google Sans', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Login overlay ── */
+  #loginOverlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  #loginOverlay.hide { display: none; }
+  .login-card {
+    background: var(--card);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.15);
+    padding: 40px 36px 32px;
+    width: 100%;
+    max-width: 400px;
+  }
+  .login-card .bar {
+    height: 8px;
+    background: var(--header-bar);
+    border-radius: 8px 8px 0 0;
+    margin: -40px -36px 28px;
+  }
+  .login-card h2 {
+    font-size: 22px;
+    font-weight: 400;
+    margin: 0 0 6px;
+  }
+  .login-card p {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 24px;
+  }
+  .login-card label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 6px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .login-card input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s;
+    margin-bottom: 16px;
+  }
+  .login-card input:focus { border-color: var(--accent); }
+  .login-card button {
+    width: 100%;
+    padding: 11px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .login-card button:hover { background: #5e35b1; }
+  .login-error {
+    font-size: 13px;
+    color: var(--bad);
+    margin-top: 12px;
+    min-height: 18px;
+    text-align: center;
+  }
+  .login-attempts {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 8px;
+  }
+
+  /* ── Main dashboard ── */
+  #dashboard { display: none; }
+  #dashboard.show { display: block; }
+
+  .top-bar {
+    background: var(--accent);
+    color: #fff;
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .top-bar .title {
+    font-family: 'Google Sans', sans-serif;
+    font-size: 18px;
+    font-weight: 400;
+  }
+  .top-bar .top-actions { display: flex; align-items: center; gap: 10px; }
+  .top-bar button {
+    background: rgba(255,255,255,.15);
+    border: 1px solid rgba(255,255,255,.3);
+    color: #fff;
+    border-radius: 4px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .top-bar button:hover { background: rgba(255,255,255,.25); }
+  .top-bar .logout-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,.8);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 4px 8px;
+  }
+  .top-bar .logout-btn:hover { color: #fff; }
+
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+
+  /* ── Stats row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--card);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    padding: 18px 20px;
+  }
+  .stat-card .stat-val {
+    font-size: 32px;
+    font-weight: 400;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-card .stat-label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  /* ── Filter / toolbar ── */
+  .toolbar {
+    background: var(--card);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    padding: 14px 20px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .toolbar input[type=text] {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    width: 220px;
+    transition: border-color .15s;
+  }
+  .toolbar input[type=text]:focus { border-color: var(--accent); }
+  .toolbar select {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    background: #fff;
+    cursor: pointer;
+    color: var(--text);
+    transition: border-color .15s;
+  }
+  .toolbar select:focus { border-color: var(--accent); }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .result-count {
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* ── Table ── */
+  .table-card {
+    background: var(--card);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  thead tr {
+    background: #f8f9fa;
+    border-bottom: 2px solid var(--border);
+  }
+  th {
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 500;
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+  }
+  th:hover { color: var(--accent); }
+  th .sort-arrow { margin-left: 4px; opacity: .4; font-size: 10px; }
+  th.sort-asc .sort-arrow::after  { content: ' ▲'; opacity: 1; }
+  th.sort-desc .sort-arrow::after { content: ' ▼'; opacity: 1; }
+  th.sort-none .sort-arrow::after { content: ' ⬍'; }
+  td {
+    padding: 11px 16px;
+    border-bottom: 1px solid #f1f3f4;
+    color: var(--text);
+    vertical-align: middle;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #fafafa; }
+
+  .dept-chip {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+  .dept-chip.HR       { background: #e8f0fe; color: #1a73e8; }
+  .dept-chip.Design   { background: #fce8e6; color: #d93025; }
+  .dept-chip.Events   { background: #e6f4ea; color: #1e8e3e; }
+  .dept-chip.Outreach { background: #fef7e0; color: #f29900; }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 36px; margin-bottom: 10px; }
+  .empty-state p { font-size: 14px; margin: 0; }
+
+  /* ── Pagination ── */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .pagination button {
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    color: var(--text);
+    transition: background .1s;
+  }
+  .pagination button:hover:not(:disabled) { background: #f1f3f4; }
+  .pagination button:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── Danger zone ── */
+  .danger-zone {
+    background: var(--card);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    padding: 18px 20px;
+    margin-top: 16px;
+    border-left: 4px solid var(--bad);
+  }
+  .danger-zone h3 {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--bad);
+    margin: 0 0 6px;
+  }
+  .danger-zone p { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+  .danger-zone button {
+    border: 1px solid var(--bad);
+    background: #fff;
+    color: var(--bad);
+    border-radius: 4px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .danger-zone button:hover { background: var(--bad-bg); }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(16px);
+    background: #323232;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 13.5px;
+    opacity: 0;
+    transition: opacity .25s, transform .25s;
+    pointer-events: none;
+    z-index: 200;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    vertical-align: -2px;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     LOGIN OVERLAY
+══════════════════════════════════ -->
+<div id="loginOverlay">
+  <div class="login-card">
+    <div class="bar"></div>
+    <h2>Admin Dashboard</h2>
+    <p>Zero Bugs Club &ndash; Round 2 Interview Responses</p>
+    <label for="pwInput">Password</label>
+    <input type="password" id="pwInput" placeholder="Enter admin password" autocomplete="current-password">
+    <button id="loginBtn">Sign in</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-attempts" id="loginAttempts"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     DASHBOARD
+══════════════════════════════════ -->
+<div id="dashboard">
+
+  <div class="top-bar">
+    <span class="title">ZBC Admin &mdash; Interview Responses</span>
+    <div class="top-actions">
+      <button id="exportBtn">&#8595; Export Excel</button>
+      <button id="refreshDashBtn">&#8635; Refresh</button>
+      <button class="logout-btn" id="logoutBtn">Sign out</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+
+    <!-- Stats -->
+    <div class="stats-row" id="statsRow">
+      <div class="stat-card">
+        <div class="stat-val" id="statTotal">0</div>
+        <div class="stat-label">Total Responses</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="statHR">0</div>
+        <div class="stat-label">HR</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="statDesign">0</div>
+        <div class="stat-label">Design</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="statEvents">0</div>
+        <div class="stat-label">Events</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="statOutreach">0</div>
+        <div class="stat-label">Outreach</div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="&#128269; Search name, email, reg no…">
+      <select id="deptFilter">
+        <option value="">All Departments</option>
+        <option value="HR">HR</option>
+        <option value="Design">Design</option>
+        <option value="Events">Events</option>
+        <option value="Outreach">Outreach</option>
+      </select>
+      <select id="dayFilter">
+        <option value="">All Days</option>
+        <option value="2026-09-17">Thu, 17 Sept</option>
+        <option value="2026-09-18">Fri, 18 Sept</option>
+      </select>
+      <div class="spacer"></div>
+      <span class="result-count" id="resultCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-card">
+      <div class="table-scroll">
+        <table id="responseTable">
+          <thead>
+            <tr>
+              <th data-col="idx"    class="sort-none">#<span class="sort-arrow"></span></th>
+              <th data-col="fullName"  class="sort-none">Name<span class="sort-arrow"></span></th>
+              <th data-col="regNo"     class="sort-none">Reg. No.<span class="sort-arrow"></span></th>
+              <th data-col="email"     class="sort-none">Email<span class="sort-arrow"></span></th>
+              <th data-col="dept"      class="sort-none">Department<span class="sort-arrow"></span></th>
+              <th data-col="slotLabel" class="sort-none">Slot<span class="sort-arrow"></span></th>
+              <th data-col="timestamp" class="sort-none">Submitted<span class="sort-arrow"></span></th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+    <!-- Danger zone -->
+    <div class="danger-zone">
+      <h3>&#9888; Danger Zone</h3>
+      <p>Permanently delete all stored responses and slot bookings. This cannot be undone.</p>
+      <button id="clearDataBtn">Clear all data</button>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/SheetJS/0.20.3/xlsx.mini.min.js"
+        integrity="sha512-RqISrPkJjLLB6MdBsTaqV/ErEIKzNPM8MCLpAOg7pvzVQz0FGzVJ4mOJPVQiVlEGfkBDqVORKaYFGzlS2AJCA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ─────────────────────────────────────────
+     AUTH — SHA-256 password check
+     Password: Zbcftw
+     Hash is computed at runtime so plaintext never appears here.
+  ───────────────────────────────────────── */
+  // SHA-256("Zbcftw") — precomputed, stored as hex
+  var STORED_HASH = '518171d3ea5c6696436b94cb575af75cd0ea76bb98df994f4600e74e3d66b85b';
+
+  // We recompute at login time using SubtleCrypto and compare
+  async function sha256hex(str) {
+    var buf = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(str)
+    );
+    return Array.from(new Uint8Array(buf))
+      .map(function (b) { return b.toString(16).padStart(2, '0'); })
+      .join('');
+  }
+
+  // Session flag — kept only in sessionStorage (cleared on tab close)
+  var SESSION_KEY = 'zbcf_admin_auth';
+
+  function isAuthed() {
+    return sessionStorage.getItem(SESSION_KEY) === '1';
+  }
+  function setAuthed() {
+    sessionStorage.setItem(SESSION_KEY, '1');
+  }
+  function clearAuthed() {
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+
+  /* ─────────────────────────────────────────
+     STORAGE LAYER (mirrors index.html)
+  ───────────────────────────────────────── */
+  var NS = 'zbcf:';
+  function load(key, fallback) {
+    try {
+      var raw = localStorage.getItem(NS + key);
+      return raw !== null ? JSON.parse(raw) : fallback;
+    } catch (e) { return fallback; }
+  }
+  function remove(key) {
+    localStorage.removeItem(NS + key);
+  }
+
+  function getAllResponses() {
+    var results = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.startsWith(NS + 'resp:')) {
+        try {
+          var val = JSON.parse(localStorage.getItem(k));
+          if (val) results.push(val);
+        } catch (e) { /* skip corrupted */ }
+      }
+    }
+    // Sort by timestamp descending by default
+    results.sort(function (a, b) {
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+    return results;
+  }
+
+  /* ─────────────────────────────────────────
+     BRUTE-FORCE PROTECTION
+     Max 5 attempts, then 30-second lockout
+  ───────────────────────────────────────── */
+  var attempts = 0;
+  var MAX_ATTEMPTS = 5;
+  var LOCKOUT_MS = 30000;
+  var lockedUntil = 0;
+
+  /* ─────────────────────────────────────────
+     DOM REFS
+  ───────────────────────────────────────── */
+  var loginOverlay  = document.getElementById('loginOverlay');
+  var dashboard     = document.getElementById('dashboard');
+  var pwInput       = document.getElementById('pwInput');
+  var loginBtn      = document.getElementById('loginBtn');
+  var loginError    = document.getElementById('loginError');
+  var loginAttempts = document.getElementById('loginAttempts');
+
+  var searchInput   = document.getElementById('searchInput');
+  var deptFilter    = document.getElementById('deptFilter');
+  var dayFilter     = document.getElementById('dayFilter');
+  var tableBody     = document.getElementById('tableBody');
+  var resultCount   = document.getElementById('resultCount');
+  var pagination    = document.getElementById('pagination');
+
+  /* ─────────────────────────────────────────
+     LOGIN
+  ───────────────────────────────────────── */
+  if (isAuthed()) {
+    showDashboard();
+  }
+
+  loginBtn.addEventListener('click', attemptLogin);
+  pwInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') attemptLogin();
+  });
+
+  async function attemptLogin() {
+    var now = Date.now();
+    if (now < lockedUntil) {
+      var secs = Math.ceil((lockedUntil - now) / 1000);
+      loginError.textContent = 'Too many attempts. Try again in ' + secs + 's.';
+      return;
+    }
+
+    var pw = pwInput.value;
+    if (!pw) { loginError.textContent = 'Please enter the password.'; return; }
+
+    loginBtn.innerHTML = '<span class="spinner"></span>Verifying…';
+    loginBtn.disabled = true;
+
+    var hash = await sha256hex(pw);
+
+    loginBtn.innerHTML = 'Sign in';
+    loginBtn.disabled = false;
+
+    if (hash === STORED_HASH) {
+      attempts = 0;
+      loginError.textContent = '';
+      loginAttempts.textContent = '';
+      setAuthed();
+      showDashboard();
+    } else {
+      attempts++;
+      pwInput.value = '';
+      pwInput.focus();
+      var remaining = MAX_ATTEMPTS - attempts;
+      if (remaining <= 0) {
+        lockedUntil = Date.now() + LOCKOUT_MS;
+        attempts = 0;
+        loginError.textContent = 'Too many failed attempts. Locked for 30 seconds.';
+        loginAttempts.textContent = '';
+        startLockoutTimer();
+      } else {
+        loginError.textContent = 'Incorrect password.';
+        loginAttempts.textContent = remaining + ' attempt' + (remaining === 1 ? '' : 's') + ' remaining.';
+      }
+    }
+  }
+
+  function startLockoutTimer() {
+    var interval = setInterval(function () {
+      var secs = Math.ceil((lockedUntil - Date.now()) / 1000);
+      if (secs <= 0) {
+        clearInterval(interval);
+        loginError.textContent = '';
+        loginAttempts.textContent = '';
+      } else {
+        loginError.textContent = 'Too many failed attempts. Try again in ' + secs + 's.';
+      }
+    }, 500);
+  }
+
+  document.getElementById('logoutBtn').addEventListener('click', function () {
+    clearAuthed();
+    dashboard.classList.remove('show');
+    loginOverlay.classList.remove('hide');
+    pwInput.value = '';
+    loginError.textContent = '';
+  });
+
+  function showDashboard() {
+    loginOverlay.classList.add('hide');
+    dashboard.classList.add('show');
+    loadAndRender();
+  }
+
+  /* ─────────────────────────────────────────
+     DATA + RENDERING
+  ───────────────────────────────────────── */
+  var allData = [];        // full dataset from localStorage
+  var filtered = [];       // after search/filter
+  var sortCol = 'timestamp';
+  var sortDir = 'desc';    // 'asc' | 'desc'
+  var PAGE_SIZE = 20;
+  var currentPage = 1;
+
+  function loadAndRender() {
+    allData = getAllResponses();
+    applyFilters();
+    updateStats();
+  }
+
+  function updateStats() {
+    document.getElementById('statTotal').textContent   = allData.length;
+    document.getElementById('statHR').textContent      = allData.filter(function(r){ return r.dept === 'HR'; }).length;
+    document.getElementById('statDesign').textContent  = allData.filter(function(r){ return r.dept === 'Design'; }).length;
+    document.getElementById('statEvents').textContent  = allData.filter(function(r){ return r.dept === 'Events'; }).length;
+    document.getElementById('statOutreach').textContent= allData.filter(function(r){ return r.dept === 'Outreach'; }).length;
+  }
+
+  function applyFilters() {
+    var q    = searchInput.value.trim().toLowerCase();
+    var dept = deptFilter.value;
+    var day  = dayFilter.value;
+
+    filtered = allData.filter(function (r) {
+      var matchQ = !q || (
+        r.fullName.toLowerCase().includes(q) ||
+        r.email.toLowerCase().includes(q) ||
+        r.regNo.toLowerCase().includes(q)
+      );
+      var matchDept = !dept || r.dept === dept;
+      var matchDay  = !day  || (r.slotId && r.slotId.startsWith(day));
+      return matchQ && matchDept && matchDay;
+    });
+
+    sortData();
+    currentPage = 1;
+    renderTable();
+  }
+
+  function sortData() {
+    var col = sortCol;
+    var dir = sortDir === 'asc' ? 1 : -1;
+    filtered.sort(function (a, b) {
+      var av = a[col] || '';
+      var bv = b[col] || '';
+      if (col === 'timestamp') {
+        return dir * (new Date(av) - new Date(bv));
+      }
+      return dir * av.toString().localeCompare(bv.toString());
+    });
+  }
+
+  /* ── Table headers — click to sort ── */
+  document.querySelectorAll('th[data-col]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var col = th.getAttribute('data-col');
+      if (col === 'idx') return; // # column not sortable
+      if (sortCol === col) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortCol = col;
+        sortDir = 'asc';
+      }
+      // Update header classes
+      document.querySelectorAll('th[data-col]').forEach(function (t) {
+        t.className = 'sort-none';
+      });
+      th.className = 'sort-' + sortDir;
+      sortData();
+      renderTable();
+    });
+  });
+
+  function renderTable() {
+    var start = (currentPage - 1) * PAGE_SIZE;
+    var page  = filtered.slice(start, start + PAGE_SIZE);
+
+    resultCount.textContent = filtered.length + ' of ' + allData.length + ' response' + (allData.length !== 1 ? 's' : '');
+
+    if (filtered.length === 0) {
+      tableBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">📭</div><p>' +
+        (allData.length === 0 ? 'No responses yet.' : 'No results match your filters.') +
+        '</p></div></td></tr>';
+      pagination.innerHTML = '';
+      return;
+    }
+
+    tableBody.innerHTML = page.map(function (r, i) {
+      var rowNum = start + i + 1;
+      var ts = r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }) : '—';
+      return '<tr>' +
+        '<td>' + rowNum + '</td>' +
+        '<td>' + esc(r.fullName || '—') + '</td>' +
+        '<td>' + esc(r.regNo || '—') + '</td>' +
+        '<td>' + esc(r.email || '—') + '</td>' +
+        '<td><span class="dept-chip ' + esc(r.dept || '') + '">' + esc(r.dept || '—') + '</span></td>' +
+        '<td>' + esc(r.slotLabel || r.slotId || '—') + '</td>' +
+        '<td>' + esc(ts) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    renderPagination();
+  }
+
+  function renderPagination() {
+    var total = Math.ceil(filtered.length / PAGE_SIZE);
+    if (total <= 1) { pagination.innerHTML = ''; return; }
+    var html = '<span>Page ' + currentPage + ' of ' + total + '</span>';
+    html += '<button id="prevPage"' + (currentPage === 1 ? ' disabled' : '') + '>&#8592; Prev</button>';
+    html += '<button id="nextPage"' + (currentPage === total ? ' disabled' : '') + '>Next &#8594;</button>';
+    pagination.innerHTML = html;
+    var prev = document.getElementById('prevPage');
+    var next = document.getElementById('nextPage');
+    if (prev) prev.addEventListener('click', function () { currentPage--; renderTable(); });
+    if (next) next.addEventListener('click', function () { currentPage++; renderTable(); });
+  }
+
+  /* ── Live filter listeners ── */
+  searchInput.addEventListener('input', debounce(applyFilters, 180));
+  deptFilter.addEventListener('change', applyFilters);
+  dayFilter.addEventListener('change', applyFilters);
+
+  document.getElementById('refreshDashBtn').addEventListener('click', function () {
+    loadAndRender();
+    showToast('Refreshed');
+  });
+
+  /* ─────────────────────────────────────────
+     EXPORT TO EXCEL
+  ───────────────────────────────────────── */
+  document.getElementById('exportBtn').addEventListener('click', function () {
+    if (typeof XLSX === 'undefined') {
+      showToast('SheetJS library not loaded. Check your connection.');
+      return;
+    }
+    var btn = document.getElementById('exportBtn');
+    btn.innerHTML = '<span class="spinner"></span>Exporting…';
+    btn.disabled = true;
+
+    setTimeout(function () { // small tick so spinner renders
+      try {
+        var rows = [['#', 'Timestamp', 'Full Name', 'Registration Number', 'Email', 'Department', 'Slot']];
+        // Export the currently filtered+sorted view
+        filtered.forEach(function (r, i) {
+          rows.push([
+            i + 1,
+            r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN') : '',
+            r.fullName  || '',
+            r.regNo     || '',
+            r.email     || '',
+            r.dept      || '',
+            r.slotLabel || r.slotId || ''
+          ]);
+        });
+        var ws = XLSX.utils.aoa_to_sheet(rows);
+        // Column widths
+        ws['!cols'] = [{ wch: 4 }, { wch: 20 }, { wch: 22 }, { wch: 16 }, { wch: 28 }, { wch: 12 }, { wch: 32 }];
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Responses');
+        var fname = 'ZBC_Round2_Responses_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+        XLSX.writeFile(wb, fname);
+        showToast('Exported ' + filtered.length + ' row' + (filtered.length !== 1 ? 's' : ''));
+      } catch (e) {
+        showToast('Export failed: ' + e.message);
+      }
+      btn.innerHTML = '&#8595; Export Excel';
+      btn.disabled = false;
+    }, 50);
+  });
+
+  /* ─────────────────────────────────────────
+     CLEAR ALL DATA
+  ───────────────────────────────────────── */
+  document.getElementById('clearDataBtn').addEventListener('click', function () {
+    if (!confirm('This will permanently delete ALL responses and slot bookings.\n\nType YES in the next prompt to confirm.')) return;
+    var confirm2 = window.prompt('Type YES to confirm deletion:');
+    if (confirm2 !== 'YES') { showToast('Cancelled.'); return; }
+
+    var keysToRemove = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.startsWith('zbcf:')) keysToRemove.push(k);
+    }
+    keysToRemove.forEach(function (k) { localStorage.removeItem(k); });
+    loadAndRender();
+    showToast('All data cleared.');
+  });
+
+  /* ─────────────────────────────────────────
+     HELPERS
+  ───────────────────────────────────────── */
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  function debounce(fn, ms) {
+    var t;
+    return function () {
+      clearTimeout(t);
+      t = setTimeout(fn, ms);
+    };
+  }
+
+  var toastTimer;
+  function showToast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2800);
+  }
+
+  /* ── Auto-refresh every 15s while tab is open ── */
+  setInterval(function () {
+    if (isAuthed()) loadAndRender();
+  }, 15000);
+
+})();
+</script>
+</body>
+</html>
