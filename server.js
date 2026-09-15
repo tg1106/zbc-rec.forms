@@ -8,7 +8,9 @@ const helmet       = require('helmet');
 const rateLimit    = require('express-rate-limit');
 const crypto       = require('crypto');
 const path         = require('path');
-const fetch        = require('node-fetch');
+const https        = require('https');
+const http         = require('http');
+const { URL }      = require('url');
 
 /* ═══════════════════════════════════════════════════════════════
    STARTUP VALIDATION
@@ -52,16 +54,21 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc:  ["'self'"],
-        scriptSrc:   ["'self'", "'unsafe-inline'", 'fonts.googleapis.com'],
+        scriptSrc:   ["'self'", "'unsafe-inline'"],
         styleSrc:    ["'self'", "'unsafe-inline'", 'fonts.googleapis.com', 'fonts.gstatic.com'],
         fontSrc:     ["'self'", 'fonts.gstatic.com'],
         imgSrc:      ["'self'", 'data:'],
         connectSrc:  ["'self'"],
         frameSrc:    ["'none'"],
         objectSrc:   ["'none'"],
+        // Only upgrade insecure requests in production (HTTPS)
+        // In development (HTTP) this breaks all fetch() calls
+        ...(IS_PROD ? { upgradeInsecureRequests: [] } : { upgradeInsecureRequests: null }),
       },
+      // Don't add upgrade-insecure-requests automatically
+      useDefaults: false,
     },
-    crossOriginEmbedderPolicy: false, // allows Google Fonts
+    crossOriginEmbedderPolicy: false,
   })
 );
 
@@ -143,29 +150,74 @@ function requireAuth(req, res, next) {
   return res.status(401).json({ ok: false, error: 'Not authenticated' });
 }
 
-/* GAS GET proxy */
-async function gasGet(params) {
-  const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`${GAS_URL}?${qs}`, {
-    method: 'GET',
-    headers: { 'User-Agent': 'ZBC-Form-Server/1.0' },
+/* ── Native HTTP/HTTPS request helper ──
+   Replaces node-fetch which hangs following GAS cross-domain redirects.
+   Manually follows up to 5 redirects using Node's built-in https module. */
+function httpsGet(urlStr, options = {}) {
+  return new Promise((resolve, reject) => {
+    let redirects = 0;
+
+    function doRequest(currentUrl) {
+      const parsed   = new URL(currentUrl);
+      const lib      = parsed.protocol === 'https:' ? https : http;
+      const reqOpts  = {
+        hostname: parsed.hostname,
+        port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+        path:     parsed.pathname + parsed.search,
+        method:   options.method || 'GET',
+        headers:  Object.assign({ 'User-Agent': 'ZBC-Form-Server/1.0' }, options.headers || {}),
+      };
+
+      const req = lib.request(reqOpts, (res) => {
+        // Follow redirects (301, 302, 303, 307, 308)
+        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+          if (++redirects > 5) return reject(new Error('Too many redirects'));
+          // Resolve relative redirects
+          const next = new URL(res.headers.location, currentUrl).toString();
+          res.resume(); // discard body
+          return doRequest(next);
+        }
+
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            return reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 200)}`));
+          }
+          try { resolve(JSON.parse(body)); }
+          catch (e) { reject(new Error('Invalid JSON from GAS: ' + body.slice(0, 200))); }
+        });
+      });
+
+      req.on('error', reject);
+      req.setTimeout(15000, () => { req.destroy(new Error('GAS request timed out')); });
+
+      if (options.body) req.write(options.body);
+      req.end();
+    }
+
+    doRequest(urlStr);
   });
-  if (!res.ok) throw new Error(`GAS responded ${res.status}`);
-  return res.json();
+}
+
+/* GAS GET proxy */
+function gasGet(params) {
+  const qs = new URLSearchParams(params).toString();
+  return httpsGet(`${GAS_URL}?${qs}`);
 }
 
 /* GAS POST proxy */
-async function gasPost(body) {
-  const res = await fetch(GAS_URL, {
-    method: 'POST',
+function gasPost(body) {
+  const payload = JSON.stringify(body);
+  return httpsGet(GAS_URL, {
+    method:  'POST',
     headers: {
-      'Content-Type': 'text/plain;charset=utf-8', // avoids CORS preflight on GAS
-      'User-Agent': 'ZBC-Form-Server/1.0',
+      'Content-Type':   'text/plain;charset=utf-8',
+      'Content-Length': Buffer.byteLength(payload),
     },
-    body: JSON.stringify(body),
+    body: payload,
   });
-  if (!res.ok) throw new Error(`GAS responded ${res.status}`);
-  return res.json();
 }
 
 /* Input validators */
