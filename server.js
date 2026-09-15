@@ -26,6 +26,7 @@ const REQUIRED_ENV = [
 const missing = REQUIRED_ENV.filter((k) => !process.env[k] || process.env[k].startsWith('CHANGE_ME'));
 if (missing.length) {
   console.error('\n[FATAL] Missing or unconfigured .env variables:', missing.join(', '));
+  console.error('Current values:', missing.map(k => k + '=' + (process.env[k] ? '"'+process.env[k].slice(0,10)+'..."' : 'undefined')).join(', '));
   console.error('Copy .env.example → .env and fill in every value.\n');
   process.exit(1);
 }
