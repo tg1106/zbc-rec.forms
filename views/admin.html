@@ -528,13 +528,7 @@
     }, 50);
   });
 
-  /* Auto-refresh every 20 s */
-  setInterval(function () {
-    fetch('/api/admin/status')
-      .then(function(r){ return r.json(); })
-      .then(function(res){ if (res.authed) fetchAndRender(); })
-      .catch(function(){});
-  }, 20000);
+  /* No auto-refresh — data loads once on login, then only on manual Refresh click */
 
   /* ── Helpers ── */
   function esc(s) { var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }

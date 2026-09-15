@@ -391,7 +391,7 @@
   }
 
   $('refreshBtn').addEventListener('click', loadSlots);
-  setInterval(loadSlots, 8000);
+  /* No auto-polling — slots only refresh on page load or manual Refresh click */
 
   /* ── Dept selection ── */
   deptList.addEventListener('click', function (e) {
@@ -462,6 +462,7 @@
     submitBtn.innerHTML = '<span class="spin"></span>Submitting\u2026';
 
     var slotLabel = slotLabelFor(state.slotId);
+    var chosenSlotId = state.slotId; // capture before any async state change
 
     fetch('/api/submit', {
       method: 'POST',
@@ -475,11 +476,19 @@
         slotLabel: slotLabel,
       }),
     })
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      // GAS can return 200 with JSON — parse regardless of HTTP status
+      return r.json();
+    })
     .then(function (res) {
       if (res.ok) {
-        showSuccess({ fullName: fullNameEl.value.trim(), regNo: regNoEl.value.trim(),
-                      email: fullEmail(), dept: state.dept, slotLabel: slotLabel });
+        showSuccess({
+          fullName : fullNameEl.value.trim(),
+          regNo    : regNoEl.value.trim(),
+          email    : fullEmail(),
+          dept     : state.dept,
+          slotLabel: slotLabel,
+        });
       } else if (res.error === 'duplicate_email') {
         state.emailTaken = true;
         emailHint.textContent = 'This email has already submitted a response.';
@@ -488,16 +497,23 @@
         showBanner('This email has already submitted. Only one response per email is allowed.', 'bad');
         resetBtn();
       } else if (res.error === 'slot_taken') {
-        showBanner('That slot was just taken. Please pick another.', 'bad');
+        // Slot was claimed by someone else between selection and submit.
+        // Deselect the taken slot and refresh the grid — no full form reset.
         state.slotId = null;
-        loadSlots().then(resetBtn);
+        showBanner(
+          'The slot you selected was just reserved by another candidate. Please pick a different slot.',
+          'bad'
+        );
+        loadSlots(); // refresh grid so the taken slot turns grey
+        resetBtn();
       } else {
         showBanner((res.error || 'Submission failed.') + ' Please try again.', 'bad');
         resetBtn();
       }
     })
-    .catch(function () {
-      showBanner('Network error. Check your connection and try again.', 'bad');
+    .catch(function (err) {
+      // Only show network error if we know the request failed — not a JSON parse issue
+      showBanner('Submission error. Please try again.', 'bad');
       resetBtn();
     });
   });

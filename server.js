@@ -157,25 +157,25 @@ function httpsGet(urlStr, options = {}) {
   return new Promise((resolve, reject) => {
     let redirects = 0;
 
-    function doRequest(currentUrl) {
+    function doRequest(currentUrl, currentOptions) {
       const parsed   = new URL(currentUrl);
       const lib      = parsed.protocol === 'https:' ? https : http;
       const reqOpts  = {
         hostname: parsed.hostname,
         port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
         path:     parsed.pathname + parsed.search,
-        method:   options.method || 'GET',
-        headers:  Object.assign({ 'User-Agent': 'ZBC-Form-Server/1.0' }, options.headers || {}),
+        method:   currentOptions.method || 'GET',
+        headers:  Object.assign({ 'User-Agent': 'ZBC-Form-Server/1.0' }, currentOptions.headers || {}),
       };
 
       const req = lib.request(reqOpts, (res) => {
-        // Follow redirects (301, 302, 303, 307, 308)
+        // Follow redirects — always switch to GET after first redirect (standard 302 behaviour)
         if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
           if (++redirects > 5) return reject(new Error('Too many redirects'));
-          // Resolve relative redirects
-          const next = new URL(res.headers.location, currentUrl).toString();
           res.resume(); // discard body
-          return doRequest(next);
+          const next = new URL(res.headers.location, currentUrl).toString();
+          // Use GET for the follow-up (browsers and curl do this for 302/303)
+          return doRequest(next, { headers: { 'User-Agent': 'ZBC-Form-Server/1.0' } });
         }
 
         let body = '';
@@ -193,11 +193,11 @@ function httpsGet(urlStr, options = {}) {
       req.on('error', reject);
       req.setTimeout(15000, () => { req.destroy(new Error('GAS request timed out')); });
 
-      if (options.body) req.write(options.body);
+      if (currentOptions.body) req.write(currentOptions.body);
       req.end();
     }
 
-    doRequest(urlStr);
+    doRequest(urlStr, options);
   });
 }
 
