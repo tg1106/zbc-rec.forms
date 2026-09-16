@@ -378,6 +378,29 @@ app.get('/api/admin/responses', requireAuth, async (req, res) => {
   }
 });
 
+/* DELETE /api/admin/response
+   Body: { email }
+   Deletes the row from the Google Sheet by email.
+   The slot automatically becomes available again since slots
+   are derived live from the sheet on every getSlots call.    */
+app.delete('/api/admin/response', requireAuth, async (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  if (!email || !/^[a-z0-9._%+\-]+@vitstudent\.ac\.in$/i.test(email)) {
+    return res.status(400).json({ ok: false, error: 'Invalid email.' });
+  }
+  try {
+    const data = await gasPost({
+      action: 'deleteResponse',
+      token:  GAS_ADMIN_TOKEN,
+      email,
+    });
+    return res.json(data);
+  } catch (err) {
+    console.error('[DELETE /api/admin/response]', err.message);
+    return res.status(502).json({ ok: false, error: 'Could not delete response. Try again.' });
+  }
+});
+
 /* ═══════════════════════════════════════════════════════════════
    ERROR HANDLING
 ═══════════════════════════════════════════════════════════════ */
