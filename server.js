@@ -8,9 +8,7 @@ const helmet       = require('helmet');
 const rateLimit    = require('express-rate-limit');
 const crypto       = require('crypto');
 const path         = require('path');
-const https        = require('https');
-const http         = require('http');
-const { URL }      = require('url');
+const axios        = require('axios');
 
 /* ═══════════════════════════════════════════════════════════════
    STARTUP VALIDATION
@@ -156,84 +154,35 @@ function requireAuth(req, res, next) {
   return res.status(401).json({ ok: false, error: 'Not authenticated' });
 }
 
-/* ── Native HTTP/HTTPS request helper ──
-   GAS returns a 302 to script.googleusercontent.com.
-   On Railway the first hop can take 3-5s, so timeout is 30s.
-   If the redirect target returns 404 (stale user_content_key after
-   a re-deploy), we retry the original GAS URL once.              ── */
-function httpsRequest(urlStr, options, _retries) {
-  options  = options  || {};
-  _retries = _retries === undefined ? 1 : _retries; // allow 1 retry on stale redirect
+/* ── GAS HTTP client using axios ──────────────────────────────────
+   axios handles GAS's cross-domain redirects (302 → googleusercontent)
+   correctly on all platforms including Railway.
+   Timeout: 30 s to account for GAS cold-start + script execution.  */
+const gasClient = axios.create({
+  timeout:          30000,
+  maxRedirects:     5,
+  validateStatus:   () => true,   // handle all status codes ourselves
+});
 
-  return new Promise((resolve, reject) => {
-    let redirects = 0;
-
-    function doRequest(currentUrl, currentOpts) {
-      const parsed  = new URL(currentUrl);
-      const lib     = parsed.protocol === 'https:' ? https : http;
-      const reqOpts = {
-        hostname: parsed.hostname,
-        port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-        path:     parsed.pathname + parsed.search,
-        method:   currentOpts.method || 'GET',
-        headers:  Object.assign({ 'User-Agent': 'ZBC-Form-Server/1.0' }, currentOpts.headers || {}),
-      };
-
-      const req = lib.request(reqOpts, (res) => {
-        // Follow redirects, switching to GET after the first hop
-        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-          if (++redirects > 5) return reject(new Error('Too many redirects'));
-          res.resume();
-          const next = new URL(res.headers.location, currentUrl).toString();
-          return doRequest(next, { headers: { 'User-Agent': 'ZBC-Form-Server/1.0' } });
-        }
-
-        let body = '';
-        res.setEncoding('utf8');
-        res.on('data', (chunk) => { body += chunk; });
-        res.on('end', () => {
-          // 404 on the redirect target = stale user_content_key — retry original URL
-          if (res.statusCode === 404 && _retries > 0) {
-            console.warn('[GAS] Stale redirect (404), retrying original URL...');
-            return httpsRequest(urlStr, options, _retries - 1).then(resolve, reject);
-          }
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            return reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 200)}`));
-          }
-          try { resolve(JSON.parse(body)); }
-          catch (e) { reject(new Error('Invalid JSON from GAS: ' + body.slice(0, 200))); }
-        });
-      });
-
-      req.on('error', reject);
-      // 30 s — accounts for Railway cold-start + GAS execution time
-      req.setTimeout(30000, () => { req.destroy(new Error('GAS request timed out')); });
-
-      if (currentOpts.body) req.write(currentOpts.body);
-      req.end();
-    }
-
-    doRequest(urlStr, options);
-  });
+async function gasGet(params) {
+  const res = await gasClient.get(GAS_URL, { params });
+  if (res.status !== 200) throw new Error(`GAS GET responded ${res.status}`);
+  if (!res.data || typeof res.data !== 'object') {
+    throw new Error('Invalid JSON from GAS: ' + String(res.data).slice(0, 100));
+  }
+  return res.data;
 }
 
-/* GAS GET proxy */
-function gasGet(params) {
-  const qs = new URLSearchParams(params).toString();
-  return httpsRequest(`${GAS_URL}?${qs}`);
-}
-
-/* GAS POST proxy */
-function gasPost(body) {
-  const payload = JSON.stringify(body);
-  return httpsRequest(GAS_URL, {
-    method:  'POST',
-    headers: {
-      'Content-Type':   'text/plain;charset=utf-8',
-      'Content-Length': Buffer.byteLength(payload),
-    },
-    body: payload,
+async function gasPost(body) {
+  // text/plain avoids CORS preflight; GAS accepts it fine
+  const res = await gasClient.post(GAS_URL, JSON.stringify(body), {
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
   });
+  if (res.status !== 200) throw new Error(`GAS POST responded ${res.status}`);
+  if (!res.data || typeof res.data !== 'object') {
+    throw new Error('Invalid JSON from GAS: ' + String(res.data).slice(0, 100));
+  }
+  return res.data;
 }
 
 /* Input validators */
